@@ -1,16 +1,13 @@
 {
-  "name": "komsb service",
-  "version": "1.0.0",
-  "description": "Automated Deployment Script",
+  "name": "komsb-service",
+  "version": "3.2.0",
+  "description": "Advanced Scheduler Deployment",
   "main": "index.js",
   "private": true,
   "scripts": {
     "start": "node index.js"
   },
-  "dependencies": {
-    "axios": "^1.7.0"
-  },
   "engines": {
-    "node": ">=16"
+    "node": ">=16.0.0"
   }
 }
