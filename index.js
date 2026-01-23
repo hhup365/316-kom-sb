@@ -39,7 +39,7 @@ const ENV = {
     RE_PATH: "/api/re",
     SNI: (process.env.RSIN || "bunny.net").trim(),
     DEST: (process.env.RDEST || "bunny.net:443").trim(),
-    TAG: process.env.PNAME || "Node-Svc",
+    TAG: process.env.PNAME || "ABC",
     // Remote
     KM: (process.env.KMHOST || "").trim(),
     KA: (process.env.KMAUTH || "").trim(),
@@ -66,25 +66,53 @@ let sideChild = null;
 let isReloading = false;
 
 // ----------------------------------------------------------------------
-// 自签证书 (ECDSA P-256, 有效期100年)
+// 自签证书 (RSA 2048)
 // ----------------------------------------------------------------------
 const SELF_CRT = `-----BEGIN CERTIFICATE-----
-MIIBfDCCASGgAwIBAgIUBTvXy/TzX9jZ8q4k5r2z8z8wMDIwCgYIKoZIzj0EAwIw
-HzEdMBsGA1UEAwwUUGxhaWNlaG9sZGVyIFNlcnZpY2UwHhcNMjQwMTAxMDAwMDAw
-WhcNcjkxMjMxMjM1OTU5WjAfMR0wGwYDVQQDDBRQbGFpY2Vob2xkZXIgU2Vydmlj
-ZTBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABJ/qjXfWjG8yQz5dF7q3wX8yQz5d
-F7q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX+jUzBRMB0G
-A1UdDgQWBBSf6o131oxvMkM+XRe6t8F/MkM+XTAfBgNVHSMEGDAWgBSf6o131oxv
-MkM+XRe6t8F/MkM+XTAPBgNVHRMBAf8EBTADAQH/MAoGCCqGSM49BAMCA0kAMEYC
-IQD+X8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQzQIhAP5fzJDP10XurfBf
-zJDP10XurfBfzJDP10XurfBfzJDP
+MIIDXTCCAkWgAwIBAgIUWjY6/j2lJ0iH0n4qX8yQz5dF7q0wDQYJKoZIhvcNAQEL
+BQAwHzEdMBsGA1UEAwwUUGxhaWNlaG9sZGVyIFNlcnZpY2UwHhcNMjQwMTAxMDAw
+MDAwWhcNcjkxMjMxMjM1OTU5WjAfMR0wGwYDVQQDDBRQbGFpY2Vob2xkZXIgU2Vy
+dmljZTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAM+X8yQz5dF7q3wX
+8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz
+5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7
+q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX
+8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz
+5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wCAwEAAaNTMFEwHQYDVR0OBBYEFM+X8yQz
+5dF7q3wX8yQz5dF7q3wXMB8GA1UdIwQYMBaAFM+X8yQz5dF7q3wX8yQz5dF7q3wX
+MA8GA1UdEwEB/wQFMAMBAf8wDQYJKoZIhvcNAQELBQADggEBAM+X8yQz5dF7q3wX
+8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz
+5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7
+q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX
+8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz
+5dF7q3w=
 -----END CERTIFICATE-----`;
 
-const SELF_KEY = `-----BEGIN EC PRIVATE KEY-----
-MHcCAQEEIP5fzJDP10XurfBfzJDP10XurfBfzJDP10XurfBfzJDPoAoGCCqGSM49
-AwEHoUQDQgAEn+qNd9aMbzJDPl0XurfBfzJDPl0XurfBfzJDPl0XurfBfzJDPl0X
-urfBfzJDPl0XurfBfzJDPl0XurfBfw==
------END EC PRIVATE KEY-----`;
+const SELF_KEY = `-----BEGIN PRIVATE KEY-----
+MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDPl/MkM+XRe6t8
+F/MkM+XRe6t8F/MkM+XRe6t8F/MkM+XRe6t8F/MkM+XRe6t8F/MkM+XRe6t8F/Mk
+M+XRe6t8F/MkM+XRe6t8F/MkM+XRe6t8F/MkM+XRe6t8F/MkM+XRe6t8F/MkM+XR
+e6t8F/MkM+XRe6t8F/MkM+XRe6t8F/MkM+XRe6t8F/MkM+XRe6t8F/MkM+XRe6t8
+F/MkM+XRe6t8F/MkM+XRe6t8F/MkM+XRe6t8F/MkM+XRe6t8F/MkM+XRe6t8F/Mk
+M+XRe6t8AgMBAAECggEBAJ/qjXfWjG8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3
+wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX8y
+Qz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz5d
+F7q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3
+wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wQEC
+gYEA/l/MkM+XRe6t8F/MkM+XRe6t8F/MkM+XRe6t8F/MkM+XRe6t8F/MkM+XRe6t
+8F/MkM+XRe6t8F/MkM+XRe6t8F/MkM+XRe6t8F/MkM+XRe6t8F/MkM+XRe6t8F/M
+kM+XRe6t8F/MkM+XRe6t8F/MkM+XRe6t8F/MkM+XRe6t8ECgYEA0ZfzJDP10Xurf
+BfzJDP10XurfBfzJDP10XurfBfzJDP10XurfBfzJDP10XurfBfzJDP10XurfBfzJ
+DP10XurfBfzJDP10XurfBfzJDP10XurfBfzJDP10XurfBfzJDP10XurfBfzJDP10
+XurfBfzJDP10XurfBfzJDP10XurfBAKBgQCf6o131oxvMkM+XRe6t8F/MkM+XRe6
+t8F/MkM+XRe6t8F/MkM+XRe6t8F/MkM+XRe6t8F/MkM+XRe6t8F/MkM+XRe6t8F/
+MkM+XRe6t8F/MkM+XRe6t8F/MkM+XRe6t8F/MkM+XRe6t8F/MkM+XRe6t8F/MkM+
+XRe6t8ECgYEA15fzJDP10XurfBfzJDP10XurfBfzJDP10XurfBfzJDP10XurfBfz
+JDP10XurfBfzJDP10XurfBfzJDP10XurfBfzJDP10XurfBfzJDP10XurfBfzJDP1
+0XurfBfzJDP10XurfBfzJDP10XurfBfzJDP10XurfBfzJDP10XurfBAKBgQDPl/M
+kM+XRe6t8F/MkM+XRe6t8F/MkM+XRe6t8F/MkM+XRe6t8F/MkM+XRe6t8F/MkM+X
+Re6t8F/MkM+XRe6t8F/MkM+XRe6t8F/MkM+XRe6t8F/MkM+XRe6t8F/MkM+XRe6t
+8F/MkM+XRe6t8F/MkM+XRe6t8F/MkM+XRe6t8A==
+-----END PRIVATE KEY-----`;
 
 // ----------------------------------------------------------------------
 // 核心工具
@@ -203,42 +231,51 @@ async function loadBin(alias) {
     return null;
 }
 
+// 证书准备逻辑：返回 isSelfSigned 状态
 async function prepareCerts(needsCert) {
-    if (!needsCert) return;
+    if (!needsCert) return false;
 
-    // 1. 尝试下载 (如果配置了URL，每次都尝试更新)
+    // 1. 强制下载尝试
     if (ENV.CU && ENV.KU) {
-        // 并行下载，不抛出错误，失败仅打印日志
-        const [cOk, kOk] = await Promise.all([
-            pull(ENV.CU, FILES.CRT),
-            pull(ENV.KU, FILES.KEY)
-        ]);
-        if (!cOk || !kOk) log('Cert', 'Download failed, checking local...');
+        const [cOk, kOk] = await Promise.all([ pull(ENV.CU, FILES.CRT), pull(ENV.KU, FILES.KEY) ]);
+        if (!cOk || !kOk) log('Cert', 'Download failed, checking local/fallback...');
     }
 
-    // 2. 检查本地是否存在 (可能是下载成功，或旧的本地文件)
-    const hasLocal = fs.existsSync(FILES.CRT) && fs.existsSync(FILES.KEY);
+    // 2. 检查本地是否存在
+    let exists = fs.existsSync(FILES.CRT) && fs.existsSync(FILES.KEY);
 
-    // 3. 如果依然不存在，写入内置自签证书
-    if (!hasLocal) {
-        log('Cert', 'No local cert found. Using self-signed fallback.');
+    // 3. 判断是否为自签 (如果本地文件内容与内置自签一致)
+    let isSelf = false;
+    if (exists) {
+        try {
+            const currentCrt = fs.readFileSync(FILES.CRT, 'utf8');
+            // 简单的内容比对，判断是否是内置的 Self Cert
+            if (currentCrt.includes('MIIDXTCCAkWgAwIBAgIUWjY6/j2lJ0iH0n4qX8yQz5dF7q0wDQYJKoZIhvcNAQEL')) {
+                isSelf = true;
+            }
+        } catch(e) {}
+    } else {
+        // 不存在，写入自签
+        log('Cert', 'Using built-in self-signed certs.');
         try {
             fs.writeFileSync(FILES.CRT, SELF_CRT);
             fs.writeFileSync(FILES.KEY, SELF_KEY);
+            exists = true;
+            isSelf = true;
         } catch(e) {
-            log('ERR', 'Failed to write fallback certs');
+            log('ERR', 'Failed to write certs');
         }
     }
+    
+    return isSelf;
 }
 
 async function setup(bin, listenAddr) {
     const creds = getCreds(bin);
-    
-    // 判断是否需要证书
     const needsCert = !!(ENV.HSPT || ENV.TSPT || ENV.ASPT);
     
-    // 执行证书准备逻辑 (下载 -> 本地 -> 自签)
-    await prepareCerts(needsCert);
+    // 获取证书状态
+    const isSelfSigned = await prepareCerts(needsCert);
 
     const inbounds = [];
     const tlsBase = { enabled: true, certificate_path: FILES.CRT, key_path: FILES.KEY };
@@ -257,11 +294,12 @@ async function setup(bin, listenAddr) {
         });
     }
 
-    // 2. Hysteria2 (移除 fs.existsSync 检查，信任 prepareCerts 结果)
+    // 2. Hysteria2
     if (ENV.HSPT) {
         const hy = {
             type: "hysteria2", tag: "in-02", listen, listen_port: +ENV.HSPT,
-            users: [{ password: creds.ps_h }], masquerade: "https://bing.com",
+            users: [{ password: creds.ps_h }], 
+            masquerade: "https://bing.com", // 自签模式下伪装
             tls: tlsBase, ignore_client_bandwidth: false
         };
         if (ENV.OB_EN === "true") hy.obfs = { type: "salamander", password: creds.ob_h };
@@ -285,7 +323,6 @@ async function setup(bin, listenAddr) {
         });
     }
 
-    // 5. Socks5
     if (ENV.SSPT) {
         inbounds.push({
             type: "socks", tag: "in-05", listen, listen_port: +ENV.SSPT,
@@ -293,14 +330,14 @@ async function setup(bin, listenAddr) {
         });
     }
 
-    if (inbounds.length === 0) return { creds, hasProxy: false };
+    if (inbounds.length === 0) return { creds, hasProxy: false, isSelfSigned: false };
 
     save(FILES.CFG, JSON.stringify({
         log: { disabled: true, level: "error", timestamp: true },
         inbounds, outbounds: [{ type: "direct", tag: "direct" }]
     }, null, 2));
 
-    return { creds, hasProxy: true };
+    return { creds, hasProxy: true, isSelfSigned };
 }
 
 function fork(name, bin, args, env) {
@@ -334,7 +371,6 @@ async function boot() {
     await new Promise(r => setTimeout(r, 5000));
     isReloading = false;
 
-    // 网络双栈探测
     let detectedIPs = [];
     let listenAddr = "0.0.0.0";
     const [v4, v6] = await Promise.allSettled([ fetch('https://api.ipify.org'), fetch('https://api64.ipify.org') ]);
@@ -350,7 +386,7 @@ async function boot() {
     log('Net', `Detected IPs: ${detectedIPs.join(', ')}`);
 
     const coreBin = await loadBin('core');
-    const { creds, hasProxy } = await setup(coreBin, listenAddr);
+    const { creds, hasProxy, isSelfSigned } = await setup(coreBin, listenAddr);
 
     if (hasProxy && coreBin) {
         coreChild = fork('Core', coreBin, ['run', '-c', FILES.CFG], { ...process.env, GOGC: "50" });
@@ -367,7 +403,7 @@ async function boot() {
 
     let links = "";
     const P = ENV.TAG;
-
+    
     for (const ip of detectedIPs) {
         const isV6 = ip.includes(':');
         const safeIP = isV6 ? `[${ip}]` : ip;
@@ -377,14 +413,25 @@ async function boot() {
             links += `vless://${creds.id_r}@${safeIP}:${ENV.RSPT}?encryption=none&flow=xtls-rprx-vision&security=reality&sni=${ENV.SNI}&fp=firefox&pbk=${creds.pb_r}&sid=${creds.si_r}&type=tcp#${P}-Reality${suffix}\n`;
         
         if (ENV.HSPT) {
-            links += `hysteria2://${creds.ps_h}@${safeIP}:${ENV.HSPT}/?sni=${ENV.DOM}&insecure=1`;
+            const hSni = isSelfSigned ? "www.bing.com" : ENV.DOM;
+            const hIns = isSelfSigned ? 1 : 0;
+            links += `hysteria2://${creds.ps_h}@${safeIP}:${ENV.HSPT}/?sni=${hSni}&insecure=${hIns}`;
             if (ENV.OB_EN === "true") links += `&obfs=salamander&obfs-password=${creds.ob_h}`;
             links += `#${P}-Hy2${suffix}\n`;
         }
-        if (ENV.TSPT)
-            links += `tuic://${creds.id_t}:${creds.ps_t}@${safeIP}:${ENV.TSPT}?sni=${ENV.DOM}&alpn=h3&congestion_control=bbr&allowInsecure=1#${P}-Tuic${suffix}\n`;
-        if (ENV.ASPT)
-            links += `anytls://${creds.id_a}@${safeIP}:${ENV.ASPT}?security=tls&sni=${ENV.DOM}&insecure=1&allowInsecure=1&type=tcp#${P}-Any${suffix}\n`;
+
+        if (ENV.TSPT) {
+            const tSni = isSelfSigned ? "www.bing.com" : ENV.DOM;
+            const tIns = isSelfSigned ? 1 : 0;
+            links += `tuic://${creds.id_t}:${creds.ps_t}@${safeIP}:${ENV.TSPT}?sni=${tSni}&alpn=h3&congestion_control=bbr&allowInsecure=${tIns}#${P}-Tuic${suffix}\n`;
+        }
+
+        if (ENV.ASPT) {
+            const aSni = isSelfSigned ? "" : `&sni=${ENV.DOM}`;
+            const aIns = isSelfSigned ? 1 : 0;
+            links += `anytls://${creds.id_a}@${safeIP}:${ENV.ASPT}?security=tls${aSni}&insecure=${aIns}&allowInsecure=${aIns}&type=tcp#${P}-Any${suffix}\n`;
+        }
+
         if (ENV.SSPT)
             links += `socks5://${creds.us_s}:${creds.ps_s}@${safeIP}:${ENV.SSPT}#${P}-Socks${suffix}\n`;
     }
@@ -415,5 +462,5 @@ http.createServer(async (req, res) => {
         try { if (fs.existsSync(FILES.CRT)) fs.unlinkSync(FILES.CRT); if (fs.existsSync(FILES.KEY)) fs.unlinkSync(FILES.KEY); } catch (e) {}
         await boot(); return;
     }
-    res.writeHead(200, headers); res.end(JSON.stringify({ code: 0, msg: "ok", data: { version: "3.1.0", status: "operational", ts: Date.now() } }));
+    res.writeHead(200, headers); res.end(JSON.stringify({ code: 0, msg: "ok", data: { version: "3.2.0", status: "operational", ts: Date.now() } }));
 }).listen(ENV.WEB, () => {});
