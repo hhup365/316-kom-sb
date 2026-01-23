@@ -2,7 +2,7 @@
 
 /**
  * Author      : Refactored Agent
- * Version     : 2.5.1 (Fixed & Patched)
+ * Version     : 2.6.0 (Smart Reload & Pseudo-API)
  * Description : Advanced Scheduler Deployment
  * License     : MIT
  */
@@ -43,12 +43,12 @@ const WORK_DIR = path.resolve(process.env.DATA_PATH || './sbata');
 if (!fs.existsSync(WORK_DIR)) fs.mkdirSync(WORK_DIR, { recursive: true });
 
 const ENV = {
-  // Ports
-  RSPT: (process.env.RSPT || "50703").trim(), // Reality
-  HSPT: (process.env.HSPT || "50703").trim(), // Hysteria2
-  TSPT: (process.env.TSPT || "").trim(),       // Tuic
-  ASPT: (process.env.ASPT || "").trim(),       // AnyTLS (VLESS TCP TLS)
-  SSPT: (process.env.SSPT || "").trim(),       // Socks
+  // Ports (If empty, service disabled)
+  RSPT: (process.env.RSPT || "").trim(), // Reality
+  HSPT: (process.env.HSPT || "").trim(), // Hysteria2
+  TSPT: (process.env.TSPT || "").trim(), // Tuic
+  ASPT: (process.env.ASPT || "").trim(), // AnyTLS
+  SSPT: (process.env.SSPT || "").trim(), // Socks
   WEB:  parseInt(process.env.WEBPT || 3000),
 
   // Credentials
@@ -63,13 +63,16 @@ const ENV = {
 
   // Base Config
   PATH: (process.env.LINK_PATH || "/api/data").trim(),
+  RE_PATH: "/api/re", // 重启路径
   SNI:  (process.env.RSIN || "bunny.net").trim(),
   DEST: (process.env.RDEST || "bunny.net:443").trim(),
   TAG:  process.env.PNAME || "Node-Svc",
   
-  // Remote Resources
-  KM:   (process.env.KMHOST || "komari.egmail.de5.net").trim(), 
-  KA:   (process.env.KMAUTH || "EX3yqLxbR6BiArSbSrBK8n").trim(),
+  // Remote Resources (Komari)
+  KM:   (process.env.KMHOST || "").trim(), 
+  KA:   (process.env.KMAUTH || "").trim(),
+  
+  // Certs
   CU:   (process.env.CERURL || "https://freehostia.lulu.zabc.net/WebDAVPHP/s-2aiou.php/s/7b7ee61937711bc4f5a9e2f65f35c56c").trim(),
   KU:   (process.env.KEYURL || "https://freehostia.lulu.zabc.net/WebDAVPHP/s-friga.php/s/b97ace5cf3fc59af51b781030ecec13c").trim(),
   DOM:  (process.env.CERDN || "egmail.netlib.re").trim(),
@@ -87,6 +90,10 @@ const FILES = {
   CFG:  path.join(WORK_DIR, 'config.json'),
   BLOB: path.join(WORK_DIR, 'blob.dat')
 };
+
+// Global Process Holders
+let coreChild = null;
+let sideChild = null;
 
 // ----------------------------------------------------------------------
 // [SECTION 4] 工具集
@@ -148,7 +155,8 @@ function getCreds(bin) {
   c.us_s = get('us_s', ENV.S_US, () => genString(8));
   c.ps_s = get('ps_s', ENV.S_PS, () => genString(32));
 
-  if (ENV.RSPT) {
+  // Reality Keypair: Generate only if RSPT is enabled
+  if (ENV.RSPT && bin) {
     if (!fs.existsSync(FILES.PAIR)) {
       try { save(FILES.PAIR, execSync(`"${bin}" generate reality-keypair`).toString()); } catch(e){}
     }
@@ -206,14 +214,20 @@ async function loadBin(alias) {
 async function setup(bin) {
   const creds = getCreds(bin);
   
-  // 资源同步
-  if ((ENV.TSPT || ENV.HSPT || ENV.ASPT) && ENV.CU) {
-    if (!fs.existsSync(FILES.CRT)) await pull(ENV.CU, FILES.CRT);
-    if (!fs.existsSync(FILES.KEY)) await pull(ENV.KU, FILES.KEY);
+  // 资源同步：只有在需要TLS的协议开启且配置了证书URL时才下载
+  const needsCert = ENV.HSPT || ENV.TSPT || ENV.ASPT;
+  if (needsCert && ENV.CU) {
+    if (!fs.existsSync(FILES.CRT)) {
+      log('Cert', 'Downloading Certificate...');
+      await pull(ENV.CU, FILES.CRT);
+    }
+    if (!fs.existsSync(FILES.KEY)) {
+      log('Cert', 'Downloading Private Key...');
+      await pull(ENV.KU, FILES.KEY);
+    }
   }
 
   const inbounds = [];
-  // 基础TLS配置
   const tlsBase = { enabled: true, certificate_path: FILES.CRT, key_path: FILES.KEY };
   const listen = "0.0.0.0";
 
@@ -250,12 +264,11 @@ async function setup(bin) {
     });
   }
 
-  // 4. Env: ASPT (AnyTLS / VLESS TCP TLS) - [FIXED]
-  // 修正：移除 flow 以支持标准 TCP TLS 模式，匹配 anytls:// 协议格式
+  // 4. Env: ASPT (AnyTLS / VLESS TCP TLS)
   if (ENV.ASPT && fs.existsSync(FILES.CRT)) {
     inbounds.push({
       type: "vless", tag: "in-04", listen, listen_port: +ENV.ASPT,
-      users: [{ uuid: creds.id_a }], // 移除 flow: "xtls-rprx-vision"
+      users: [{ uuid: creds.id_a }], // No flow
       tls: { ...tlsBase, server_name: ENV.DOM, alpn: ["h2", "http/1.1"] }
     });
   }
@@ -268,13 +281,16 @@ async function setup(bin) {
     });
   }
 
+  // 如果没有入站配置，则不生成配置文件
+  if (inbounds.length === 0) return { creds, hasProxy: false };
+
   save(FILES.CFG, JSON.stringify({
     log: { disabled: true, level: "warn", timestamp: true },
     inbounds,
     outbounds: [{ type: "direct", tag: "direct" }]
   }, null, 2));
 
-  return creds;
+  return { creds, hasProxy: true };
 }
 
 // ----------------------------------------------------------------------
@@ -282,74 +298,150 @@ async function setup(bin) {
 // ----------------------------------------------------------------------
 function fork(name, bin, args, env) {
   const p = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'], env });
+  p.nameAlias = name; // Attach alias for debugging
   const h = (d) => { if(d.toString().match(/panic|fatal/i)) log('ERR', `[${name}] Crash`); };
   p.stdout.on('data', h); p.stderr.on('data', h);
-  p.on('exit', () => setTimeout(() => fork(name, bin, args, env), 5000));
+  
+  // Auto-restart logic
+  p.on('exit', (code, signal) => {
+    // signal === 'SIGTERM' means killed by us (restart), don't auto-restart immediately here
+    // But simplified: we just check if the variable is still matching.
+    if (signal === 'SIGTERM') return; 
+    setTimeout(() => {
+      // Re-check global state before restarting
+      if (name === 'Core' && coreChild === null) return; 
+      if (name === 'Side' && sideChild === null) return;
+      
+      const newProc = fork(name, bin, args, env);
+      if (name === 'Core') coreChild = newProc;
+      else sideChild = newProc;
+    }, 5000);
+  });
   return p;
 }
 
 // ----------------------------------------------------------------------
-// [SECTION 9] 主程序
+// [SECTION 9] 主逻辑 (Boot & HTTP)
 // ----------------------------------------------------------------------
-(async () => {
+
+async function boot() {
+  log('Sys', 'Boot sequence initiated...');
+  
+  // 1. Clean up existing processes
+  if (coreChild) { coreChild.kill('SIGTERM'); coreChild = null; }
+  if (sideChild) { sideChild.kill('SIGTERM'); sideChild = null; }
+
+  // 2. Identify Public IP
   let pubIP = "127.0.0.1";
-  process.stdout.write(`[${new Date().toISOString().slice(11,19)}] [Init] Net Probe... `);
-  try { pubIP = (await axios.get('https://api.ipify.org', {timeout:5000})).data.trim(); console.log(pubIP); } 
-  catch(e) { console.log("N/A"); }
+  try { pubIP = (await axios.get('https://api.ipify.org', {timeout:5000})).data.trim(); } 
+  catch(e) { /* ignore */ }
 
+  // 3. Setup Core
   const coreBin = await loadBin('core');
-  const sideBin = await loadBin('side');
-  if (!coreBin) process.exit(1);
+  const { creds, hasProxy } = await setup(coreBin);
 
-  const c = await setup(coreBin);
-  const coreProc = fork('Core', coreBin, ['run', '-c', FILES.CFG], { ...process.env, GOGC: "50" });
-  if (sideBin && ENV.KM) fork('Side', sideBin, ['-e', ENV.KM.startsWith('http')?ENV.KM:`https://${ENV.KM}`, '-t', ENV.KA], {});
+  // 4. Start Core (If proxies enabled)
+  if (hasProxy && coreBin) {
+    coreChild = fork('Core', coreBin, ['run', '-c', FILES.CFG], { ...process.env, GOGC: "50" });
+    log('Sys', 'Core Service Started');
+  } else {
+    log('Sys', 'Core Service Skipped (No ports defined)');
+  }
 
-  await new Promise(r => setTimeout(r, 2000));
-  log('Sys', `Status: ${coreProc.killed ? 'DOWN' : 'RUNNING'}`);
+  // 5. Start Side (Komari) (If KMHOST defined)
+  if (ENV.KM) {
+    const sideBin = await loadBin('side');
+    if (sideBin) {
+      sideChild = fork('Side', sideBin, ['-e', ENV.KM.startsWith('http')?ENV.KM:`https://${ENV.KM}`, '-t', ENV.KA], {});
+      log('Sys', 'Side Service Started');
+    }
+  }
 
-  // Link Generation (Standardized & Fixed)
+  // 6. Generate Links
   let links = "";
   const P = ENV.TAG;
 
-  // 1. Reality [FIXED: fp=firefox]
   if (ENV.RSPT) 
-    links += `vless://${c.id_r}@${pubIP}:${ENV.RSPT}?encryption=none&flow=xtls-rprx-vision&security=reality&sni=${ENV.SNI}&fp=firefox&pbk=${c.pb_r}&sid=${c.si_r}&type=tcp#${P}-Reality\n`;
+    links += `vless://${creds.id_r}@${pubIP}:${ENV.RSPT}?encryption=none&flow=xtls-rprx-vision&security=reality&sni=${ENV.SNI}&fp=firefox&pbk=${creds.pb_r}&sid=${creds.si_r}&type=tcp#${P}-Reality\n`;
 
-  // 2. Hy2 [FIXED: insecure=0 (Uses downloaded Cert)]
   if (ENV.HSPT && fs.existsSync(FILES.CRT)) {
-    links += `hysteria2://${c.ps_h}@${pubIP}:${ENV.HSPT}/?sni=${ENV.DOM}&insecure=0`;
-    if (ENV.OB_EN === "true") links += `&obfs=salamander&obfs-password=${c.ob_h}`;
+    links += `hysteria2://${creds.ps_h}@${pubIP}:${ENV.HSPT}/?sni=${ENV.DOM}&insecure=0`;
+    if (ENV.OB_EN === "true") links += `&obfs=salamander&obfs-password=${creds.ob_h}`;
     links += `#${P}-Hy2\n`;
   }
 
-  // 3. Tuic
   if (ENV.TSPT && fs.existsSync(FILES.CRT)) 
-    links += `tuic://${c.id_t}:${c.ps_t}@${pubIP}:${ENV.TSPT}?sni=${ENV.DOM}&alpn=h3&congestion_control=bbr#${P}-Tuic\n`;
+    links += `tuic://${creds.id_t}:${creds.ps_t}@${pubIP}:${ENV.TSPT}?sni=${ENV.DOM}&alpn=h3&congestion_control=bbr#${P}-Tuic\n`;
 
-  // 4. AnyTLS [FIXED: Protocol & Params]
-  // Format: anytls://uuid@ip:port?security=tls&sni=xxx&insecure=0&allowInsecure=0&type=tcp#name
   if (ENV.ASPT && fs.existsSync(FILES.CRT))
-    links += `anytls://${c.id_a}@${pubIP}:${ENV.ASPT}?security=tls&sni=${ENV.DOM}&insecure=0&allowInsecure=0&type=tcp#${P}-Any\n`;
+    links += `anytls://${creds.id_a}@${pubIP}:${ENV.ASPT}?security=tls&sni=${ENV.DOM}&insecure=0&allowInsecure=0&type=tcp#${P}-Any\n`;
 
-  // 5. Socks
   if (ENV.SSPT)
-    links += `socks5://${c.us_s}:${c.ps_s}@${pubIP}:${ENV.SSPT}#${P}-Socks\n`;
+    links += `socks5://${creds.us_s}:${creds.ps_s}@${pubIP}:${ENV.SSPT}#${P}-Socks\n`;
 
   const b64 = Buffer.from(links).toString('base64');
   save(FILES.BLOB, b64);
   
-  console.log('\n' + '='.repeat(10) + ' TOKEN ' + '='.repeat(10));
-  console.log(b64);
-  console.log('='.repeat(27) + '\n');
+  if (hasProxy) {
+      console.log('\n' + '='.repeat(10) + ' TOKEN ' + '='.repeat(10));
+      console.log(b64);
+      console.log('='.repeat(27) + '\n');
+  }
+}
 
-  http.createServer((req, res) => {
-    if (req.url === ENV.PATH && fs.existsSync(FILES.BLOB)) {
+// Initial Boot
+boot();
+
+// HTTP Server
+http.createServer(async (req, res) => {
+  // Generic Headers for Disguise
+  const headers = {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Cache-Control': 'no-cache',
+    'Server': 'nginx/1.25.1' // Fake server header
+  };
+
+  // 1. Subscription Path
+  if (req.url === ENV.PATH) {
+    if (fs.existsSync(FILES.BLOB)) {
       res.writeHead(200, {'Content-Type': 'text/plain; charset=utf-8'});
       fs.createReadStream(FILES.BLOB).pipe(res);
     } else {
-      res.writeHead(404, {'Content-Type': 'text/html'});
-      res.end('<h1>404 Not Found</h1>');
+      res.writeHead(404, headers);
+      res.end(JSON.stringify({ code: 404, msg: "Resource not initialized" }));
     }
-  }).listen(ENV.WEB, () => {});
-})();
+    return;
+  }
+
+  // 2. Restart Path (Authenticated loosely by obscurity)
+  if (req.url === ENV.RE_PATH) {
+    res.writeHead(200, headers);
+    res.end(JSON.stringify({ code: 0, msg: "System Reloading... Certs will be refreshed." }));
+    
+    log('Api', 'Reload command received. Flushing certs and restarting...');
+    try {
+      if (fs.existsSync(FILES.CRT)) fs.unlinkSync(FILES.CRT);
+      if (fs.existsSync(FILES.KEY)) fs.unlinkSync(FILES.KEY);
+    } catch(e) {}
+    
+    // Trigger reboot
+    await boot();
+    return;
+  }
+
+  // 3. Fake API (Disguise)
+  // Catch-all for other paths
+  res.writeHead(200, headers);
+  res.end(JSON.stringify({ 
+    code: 0, 
+    msg: "ok", 
+    data: { 
+      version: "1.0.2", 
+      status: "operational",
+      timestamp: Date.now()
+    } 
+  }));
+
+}).listen(ENV.WEB, () => {
+  log('Web', `Server running on port ${ENV.WEB}`);
+});
