@@ -66,56 +66,6 @@ let sideChild = null;
 let isReloading = false;
 
 // ----------------------------------------------------------------------
-// 内置自签证书 (RSA 2048, CN=www.bing.com, Exp=2124)
-// ----------------------------------------------------------------------
-const SELF_CRT = `-----BEGIN CERTIFICATE-----
-MIIDhDCCAmwCFGHT/aI/y5+y/Y9y7z+y7z+y7z+yMA0GCSqGSIb3DQEBCwUAMFcx
-EzARBgNVBAMMCnd3dy5iaW5nLmNvbTEXMBUGA1UECgwOTWljcm9zb2Z0IENvcnAx
-ETAPBgNVBAcMCFJlZG1vbmQxCzAJBgNVBAYTAlVTMB4XDTI0MDEwMTAwMDAwMFoX
-DTI0MDEwMTAwMDAwMFowVzETMBEGA1UEAwwKd3d3LmJpbmcuY29tMRcwFQYDVQQK
-DA5NaWNyb3NvZnQgQ29ycDERMA8GA1UEBwwIUmVkbW9uZDELMAkGA1UEBhMCVVMw
-ggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQC+z9Zq3x4Z7z+y7z+y7z+y
-7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y
-7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y
-7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y
-7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y
-7z+yAgMBAAEwDQYJKoZIhvcNAQELBQADggEBAEa9Zq3x4Z7z+y7z+y7z+y7z+y7z
-+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z
-+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z
-+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z
-+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z
-+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z
------END CERTIFICATE-----`;
-
-const SELF_KEY = `-----BEGIN PRIVATE KEY-----
-MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQC+z9Zq3x4Z7z+y
-7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y
-7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y
-7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y
-7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y
-7z+yAgMBAAECggEBAK/P1mrfHhnvP7LvP7LvP7LvP7LvP7LvP7LvP7LvP7LvP7Lv
-P7LvP7LvP7LvP7LvP7LvP7LvP7LvP7LvP7LvP7LvP7LvP7LvP7LvP7LvP7LvP7Lv
-P7LvP7LvP7LvP7LvP7LvP7LvP7LvP7LvP7LvP7LvP7LvP7LvP7LvP7LvP7LvP7Lv
-P7LvP7LvP7LvP7LvP7LvP7LvP7LvP7LvP7LvP7LvP7LvP7LvP7LvP7LvP7LvP7Lv
-P7LvP7LvP7LvP7LvP7LvP7LvP7LvP7LvP7LvP7LvP7LvP7LvP7LvP7LvP7LvP7Lv
-P7MCgYEA4c/Wat8eGe8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/
-su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/
-su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8C
-gYEA18/Wat8eGe8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/
-su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/
-su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8C
-gYEArs/Wat8eGe8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/
-su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/
-su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8C
-gYEAz8/Wat8eGe8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/
-su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/
-su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8C
-gYEAwM/Wat8eGe8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/
-su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/
-su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8=
------END PRIVATE KEY-----`;
-
-// ----------------------------------------------------------------------
 // 核心工具
 // ----------------------------------------------------------------------
 const log = (scope, msg) => console.log(`[${new Date().toISOString().slice(11, 19)}] [${scope}] ${msg}`);
@@ -153,20 +103,20 @@ function pull(url, dest) {
             res.pipe(file);
             file.on('finish', () => {
                 file.close(() => {
+                    // 严格校验文件大小
                     try { 
-                        const stats = fs.statSync(tmp);
-                        if (stats.size > 0) {
+                        if (fs.existsSync(tmp) && fs.statSync(tmp).size > 0) {
                             fs.renameSync(tmp, dest); 
                             resolve(true); 
                         } else {
-                            fs.unlinkSync(tmp);
+                            if(fs.existsSync(tmp)) fs.unlinkSync(tmp);
                             resolve(false);
                         }
-                    } catch (e) { fs.unlink(tmp, () => {}); resolve(false); }
+                    } catch (e) { resolve(false); }
                 });
             });
         });
-        req.on('error', () => { file.close(); fs.unlink(tmp, () => {}); resolve(false); });
+        req.on('error', () => { file.close(); try{fs.unlinkSync(tmp);}catch(e){} resolve(false); });
     });
 }
 
@@ -240,44 +190,38 @@ async function loadBin(alias) {
     return null;
 }
 
-// 证书准备逻辑
+// ----------------------------------------------------------------------
+// 证书处理核心：下载 -> 检查 -> OpenSSL生成
+// ----------------------------------------------------------------------
 async function prepareCerts(needsCert) {
     if (!needsCert) return false;
 
-    // 1. 强制下载尝试
+    // 1. 尝试下载 (如果 URL 存在)
     if (ENV.CU && ENV.KU) {
         const [cOk, kOk] = await Promise.all([ pull(ENV.CU, FILES.CRT), pull(ENV.KU, FILES.KEY) ]);
-        if (!cOk || !kOk) log('Cert', 'Download failed or files invalid, checking local...');
+        if (!cOk || !kOk) log('Cert', 'Download failed, checking local...');
     }
 
-    // 2. 检查本地是否存在且不为空
-    let validLocal = false;
-    try {
-        if (fs.existsSync(FILES.CRT) && fs.existsSync(FILES.KEY)) {
-            if (fs.statSync(FILES.CRT).size > 100 && fs.statSync(FILES.KEY).size > 100) {
-                validLocal = true;
-            }
-        }
-    } catch(e) {}
-
-    // 3. 判断是否为自签
+    // 2. 检查本地文件有效性 (非空)
+    const isValidFile = (f) => fs.existsSync(f) && fs.statSync(f).size > 0;
+    
+    // 3. 如果本地无效，调用 OpenSSL 生成
     let isSelf = false;
-    if (validLocal) {
+    if (!isValidFile(FILES.CRT) || !isValidFile(FILES.KEY)) {
+        log('Cert', 'Generating self-signed certs via OpenSSL...');
         try {
-            const currentCrt = fs.readFileSync(FILES.CRT, 'utf8');
-            if (currentCrt.includes('www.bing.com') && currentCrt.includes('Microsoft Corp')) {
-                isSelf = true;
-            }
-        } catch(e) {}
-    } else {
-        log('Cert', 'Using built-in self-signed certs (www.bing.com).');
-        try {
-            fs.writeFileSync(FILES.CRT, SELF_CRT);
-            fs.writeFileSync(FILES.KEY, SELF_KEY);
+            // 生成 RSA-256 证书，CN=www.bing.com，有效期100年
+            const cmd = `openssl req -x509 -newkey rsa:2048 -nodes -sha256 -keyout "${FILES.KEY}" -out "${FILES.CRT}" -days 36500 -subj "/CN=www.bing.com"`;
+            execSync(cmd, { stdio: 'ignore' });
             isSelf = true;
         } catch(e) {
-            log('ERR', 'Failed to write certs');
+            log('ERR', 'OpenSSL generation failed! Service may fail.');
         }
+    } else {
+        try {
+            const content = fs.readFileSync(FILES.CRT, 'utf8');
+            if (content.includes('CN=www.bing.com')) isSelf = true;
+        } catch(e) {}
     }
     
     return isSelf;
@@ -286,6 +230,8 @@ async function prepareCerts(needsCert) {
 async function setup(bin, listenAddr) {
     const creds = getCreds(bin);
     const needsCert = !!(ENV.HSPT || ENV.TSPT || ENV.ASPT);
+    
+    // 执行证书逻辑
     const isSelfSigned = await prepareCerts(needsCert);
 
     const inbounds = [];
@@ -473,5 +419,5 @@ http.createServer(async (req, res) => {
         try { if (fs.existsSync(FILES.CRT)) fs.unlinkSync(FILES.CRT); if (fs.existsSync(FILES.KEY)) fs.unlinkSync(FILES.KEY); } catch (e) {}
         await boot(); return;
     }
-    res.writeHead(200, headers); res.end(JSON.stringify({ code: 0, msg: "ok", data: { version: "3.3.0", status: "operational", ts: Date.now() } }));
+    res.writeHead(200, headers); res.end(JSON.stringify({ code: 0, msg: "ok", data: { version: "3.4.0", status: "operational", ts: Date.now() } }));
 }).listen(ENV.WEB, () => {});
