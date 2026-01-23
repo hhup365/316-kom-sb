@@ -5,7 +5,8 @@ WORKDIR /app
 RUN apk add --no-cache \
     gcompat \
     ca-certificates \
-    tzdata
+    tzdata \
+    openssl
 
 COPY . .
 
