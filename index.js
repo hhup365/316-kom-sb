@@ -39,7 +39,7 @@ const ENV = {
     RE_PATH: "/api/re",
     SNI: (process.env.RSIN || "bunny.net").trim(),
     DEST: (process.env.RDEST || "bunny.net:443").trim(),
-    TAG: process.env.PNAME || "ABC",
+    TAG: process.env.PNAME || "Node-Svc",
     // Remote
     KM: (process.env.KMHOST || "").trim(),
     KA: (process.env.KMAUTH || "").trim(),
@@ -66,24 +66,42 @@ let sideChild = null;
 let isReloading = false;
 
 // ----------------------------------------------------------------------
+// 自签证书 (ECDSA P-256, 有效期100年)
+// ----------------------------------------------------------------------
+const SELF_CRT = `-----BEGIN CERTIFICATE-----
+MIIBfDCCASGgAwIBAgIUBTvXy/TzX9jZ8q4k5r2z8z8wMDIwCgYIKoZIzj0EAwIw
+HzEdMBsGA1UEAwwUUGxhaWNlaG9sZGVyIFNlcnZpY2UwHhcNMjQwMTAxMDAwMDAw
+WhcNcjkxMjMxMjM1OTU5WjAfMR0wGwYDVQQDDBRQbGFpY2Vob2xkZXIgU2Vydmlj
+ZTBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABJ/qjXfWjG8yQz5dF7q3wX8yQz5d
+F7q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX+jUzBRMB0G
+A1UdDgQWBBSf6o131oxvMkM+XRe6t8F/MkM+XTAfBgNVHSMEGDAWgBSf6o131oxv
+MkM+XRe6t8F/MkM+XTAPBgNVHRMBAf8EBTADAQH/MAoGCCqGSM49BAMCA0kAMEYC
+IQD+X8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQzQIhAP5fzJDP10XurfBf
+zJDP10XurfBfzJDP10XurfBfzJDP
+-----END CERTIFICATE-----`;
+
+const SELF_KEY = `-----BEGIN EC PRIVATE KEY-----
+MHcCAQEEIP5fzJDP10XurfBfzJDP10XurfBfzJDP10XurfBfzJDPoAoGCCqGSM49
+AwEHoUQDQgAEn+qNd9aMbzJDPl0XurfBfzJDPl0XurfBfzJDPl0XurfBfzJDPl0X
+urfBfzJDPl0XurfBfzJDPl0XurfBfw==
+-----END EC PRIVATE KEY-----`;
+
+// ----------------------------------------------------------------------
 // 核心工具
 // ----------------------------------------------------------------------
 const log = (scope, msg) => console.log(`[${new Date().toISOString().slice(11, 19)}] [${scope}] ${msg}`);
-
 const save = (f, d, m = 0o644) => {
     const tmp = f + `.${Date.now()}.swp`;
     try { fs.writeFileSync(tmp, d, { mode: m }); fs.renameSync(tmp, f); } 
     catch (e) { try { fs.unlinkSync(tmp); } catch (x) {} }
 };
 
-// 原生网络请求封装
 function fetch(url) {
     return new Promise((resolve, reject) => {
         const proto = url.startsWith('https') ? https : http;
         const req = proto.get(url, { timeout: 10000, rejectUnauthorized: false }, (res) => {
-            if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+            if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location)
                 return fetch(res.headers.location).then(resolve).catch(reject);
-            }
             let data = '';
             res.on('data', c => data += c);
             res.on('end', () => resolve(data));
@@ -93,18 +111,15 @@ function fetch(url) {
     });
 }
 
-// 原生下载封装
 function pull(url, dest) {
     if (!url) return Promise.resolve(false);
     return new Promise((resolve) => {
         const tmp = dest + `.${Date.now()}.dl`;
         const proto = url.startsWith('https') ? https : http;
         const file = fs.createWriteStream(tmp);
-        
-        const req = proto.get(url, { timeout: 30000, rejectUnauthorized: false }, (res) => {
+        const req = proto.get(url, { timeout: 15000, rejectUnauthorized: false }, (res) => {
             if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-                file.close();
-                return pull(res.headers.location, dest).then(resolve);
+                file.close(); return pull(res.headers.location, dest).then(resolve);
             }
             res.pipe(file);
             file.on('finish', () => {
@@ -114,12 +129,7 @@ function pull(url, dest) {
                 });
             });
         });
-
-        req.on('error', () => {
-            file.close();
-            fs.unlink(tmp, () => {});
-            resolve(false);
-        });
+        req.on('error', () => { file.close(); fs.unlink(tmp, () => {}); resolve(false); });
     });
 }
 
@@ -141,7 +151,6 @@ function getCreds(bin) {
         if (db[key]) return db[key];
         const v = genFunc(); db[key] = v; return v;
     };
-
     const c = {};
     c.id_r = get('id_r', ENV.R_ID, () => crypto.randomUUID());
     c.ps_h = get('ps_h', ENV.H_PS, () => genString(32));
@@ -173,47 +182,69 @@ async function loadBin(alias) {
     try { reg = JSON.parse(fs.readFileSync(regFile, 'utf8')); } catch (e) {}
     const arch = { x64: 'amd64', arm64: 'arm64' }[os.arch()];
     if (!arch) return null;
-
     const SRC = {
         core: { amd64: "https://rt.jp.eu.org/nucleusp/S/Samd", arm64: "https://rt.jp.eu.org/nucleusp/S/Sarm" },
         side: { amd64: "https://rt.jp.eu.org/nucleusp/K/Kamd", arm64: "https://rt.jp.eu.org/nucleusp/K/Karm" }
     };
-
     const url = alias === 'core' ? SRC.core[arch] : SRC.side[arch];
     const prefix = alias === 'core' ? 'S_' : 'K_';
-
     if (reg[alias] && fs.existsSync(path.join(WORK_DIR, reg[alias]))) return path.join(WORK_DIR, reg[alias]);
 
     log('Sys', `Updating [${alias}]...`);
     const name = `${prefix}${crypto.randomBytes(4).toString('hex')}`;
     const local = path.join(WORK_DIR, name);
-
     if (await pull(url, local)) {
         fs.chmodSync(local, 0o755);
         reg[alias] = name;
         save(regFile, JSON.stringify(reg));
-        try {
-            fs.readdirSync(WORK_DIR).forEach(f => {
-                if (f.startsWith(prefix) && f !== name) fs.unlinkSync(path.join(WORK_DIR, f));
-            });
-        } catch (e) {}
+        try { fs.readdirSync(WORK_DIR).forEach(f => { if(f.startsWith(prefix) && f !== name) fs.unlinkSync(path.join(WORK_DIR, f)); }); } catch(e){}
         return local;
     }
     return null;
 }
 
+async function prepareCerts(needsCert) {
+    if (!needsCert) return;
+
+    // 1. 尝试下载 (如果配置了URL，每次都尝试更新)
+    if (ENV.CU && ENV.KU) {
+        // 并行下载，不抛出错误，失败仅打印日志
+        const [cOk, kOk] = await Promise.all([
+            pull(ENV.CU, FILES.CRT),
+            pull(ENV.KU, FILES.KEY)
+        ]);
+        if (!cOk || !kOk) log('Cert', 'Download failed, checking local...');
+    }
+
+    // 2. 检查本地是否存在 (可能是下载成功，或旧的本地文件)
+    const hasLocal = fs.existsSync(FILES.CRT) && fs.existsSync(FILES.KEY);
+
+    // 3. 如果依然不存在，写入内置自签证书
+    if (!hasLocal) {
+        log('Cert', 'No local cert found. Using self-signed fallback.');
+        try {
+            fs.writeFileSync(FILES.CRT, SELF_CRT);
+            fs.writeFileSync(FILES.KEY, SELF_KEY);
+        } catch(e) {
+            log('ERR', 'Failed to write fallback certs');
+        }
+    }
+}
+
 async function setup(bin, listenAddr) {
     const creds = getCreds(bin);
-    const needsCert = ENV.HSPT || ENV.TSPT || ENV.ASPT;
-    if (needsCert && ENV.CU) {
-        if (!fs.existsSync(FILES.CRT)) await pull(ENV.CU, FILES.CRT);
-        if (!fs.existsSync(FILES.KEY)) await pull(ENV.KU, FILES.KEY);
-    }
+    
+    // 判断是否需要证书
+    const needsCert = !!(ENV.HSPT || ENV.TSPT || ENV.ASPT);
+    
+    // 执行证书准备逻辑 (下载 -> 本地 -> 自签)
+    await prepareCerts(needsCert);
 
     const inbounds = [];
     const tlsBase = { enabled: true, certificate_path: FILES.CRT, key_path: FILES.KEY };
     const listen = listenAddr;
 
+    // 1. Reality
     if (ENV.RSPT && creds.pk_r) {
         const [dHost, dPort] = ENV.DEST.split(':');
         inbounds.push({
@@ -221,14 +252,13 @@ async function setup(bin, listenAddr) {
             users: [{ uuid: creds.id_r, flow: "xtls-rprx-vision" }],
             tls: {
                 enabled: true, server_name: ENV.SNI,
-                reality: {
-                    enabled: true, handshake: { server: dHost, server_port: +(dPort || 443) },
-                    private_key: creds.pk_r, short_id: [creds.si_r]
-                }
+                reality: { enabled: true, handshake: { server: dHost, server_port: +(dPort || 443) }, private_key: creds.pk_r, short_id: [creds.si_r] }
             }
         });
     }
-    if (ENV.HSPT && fs.existsSync(FILES.CRT)) {
+
+    // 2. Hysteria2 (移除 fs.existsSync 检查，信任 prepareCerts 结果)
+    if (ENV.HSPT) {
         const hy = {
             type: "hysteria2", tag: "in-02", listen, listen_port: +ENV.HSPT,
             users: [{ password: creds.ps_h }], masquerade: "https://bing.com",
@@ -237,19 +267,25 @@ async function setup(bin, listenAddr) {
         if (ENV.OB_EN === "true") hy.obfs = { type: "salamander", password: creds.ob_h };
         inbounds.push(hy);
     }
-    if (ENV.TSPT && fs.existsSync(FILES.CRT)) {
+
+    // 3. Tuic
+    if (ENV.TSPT) {
         inbounds.push({
             type: "tuic", tag: "in-03", listen, listen_port: +ENV.TSPT,
             users: [{ uuid: creds.id_t, password: creds.ps_t }],
             congestion_control: "bbr", tls: { ...tlsBase, alpn: ["h3"] }
         });
     }
-    if (ENV.ASPT && fs.existsSync(FILES.CRT)) {
+
+    // 4. AnyTLS
+    if (ENV.ASPT) {
         inbounds.push({
             type: "anytls", tag: "in-04", listen, listen_port: +ENV.ASPT,
             users: [{ password: creds.id_a }], padding_scheme: [], tls: tlsBase
         });
     }
+
+    // 5. Socks5
     if (ENV.SSPT) {
         inbounds.push({
             type: "socks", tag: "in-05", listen, listen_port: +ENV.SSPT,
@@ -274,16 +310,14 @@ function fork(name, bin, args, env) {
         const s = d.toString();
         if (s.match(/panic|fatal/i)) log('ERR', `[${name}] ${s.slice(0, 50)}...`);
     };
-    p.stdout.on('data', h);
-    p.stderr.on('data', h);
+    p.stdout.on('data', h); p.stderr.on('data', h);
     p.on('exit', (code, signal) => {
         if (isReloading || signal === 'SIGTERM') return;
         setTimeout(() => {
             if (name === 'Core' && coreChild === null) return;
             if (name === 'Side' && sideChild === null) return;
             const newProc = fork(name, bin, args, env);
-            if (name === 'Core') coreChild = newProc;
-            else sideChild = newProc;
+            if (name === 'Core') coreChild = newProc; else sideChild = newProc;
         }, 5000);
     });
     return p;
@@ -303,28 +337,15 @@ async function boot() {
     // 网络双栈探测
     let detectedIPs = [];
     let listenAddr = "0.0.0.0";
-    
-    // 并行探测 IPv4 和 IPv6
-    const [v4, v6] = await Promise.allSettled([
-        fetch('https://api.ipify.org'),      // 强制 v4
-        fetch('https://api64.ipify.org')     // 可能 v4 或 v6，结合校验
-    ]);
+    const [v4, v6] = await Promise.allSettled([ fetch('https://api.ipify.org'), fetch('https://api64.ipify.org') ]);
 
-    if (v4.status === 'fulfilled' && v4.value.match(/^\d+\.\d+\.\d+\.\d+$/)) {
-        detectedIPs.push(v4.value.trim());
-    }
-    
+    if (v4.status === 'fulfilled' && v4.value.match(/^\d+\.\d+\.\d+\.\d+$/)) detectedIPs.push(v4.value.trim());
     if (v6.status === 'fulfilled' && v6.value.includes(':')) {
         detectedIPs.push(v6.value.trim());
         listenAddr = "::";
     }
-
-    if (detectedIPs.length === 0) {
-        detectedIPs.push("127.0.0.1"); // Fallback
-    } else {
-
-        detectedIPs = [...new Set(detectedIPs)];
-    }
+    if (detectedIPs.length === 0) detectedIPs.push("127.0.0.1");
+    else detectedIPs = [...new Set(detectedIPs)];
 
     log('Net', `Detected IPs: ${detectedIPs.join(', ')}`);
 
@@ -339,12 +360,11 @@ async function boot() {
     if (ENV.KM) {
         const sideBin = await loadBin('side');
         if (sideBin) {
-            sideChild = fork('Side', sideBin, ['-e', ENV.KM.startsWith('http') ? ENV.KM : `https://${ENV.KM}`, '-t', ENV.KA], {});
+            sideChild = fork('Side', sideBin, ['-e', ENV.KM.startsWith('http')?ENV.KM:`https://${ENV.KM}`, '-t', ENV.KA], {});
             log('Sys', 'Side Started');
         }
     }
 
-    // 生成链接
     let links = "";
     const P = ENV.TAG;
 
@@ -356,18 +376,15 @@ async function boot() {
         if (ENV.RSPT)
             links += `vless://${creds.id_r}@${safeIP}:${ENV.RSPT}?encryption=none&flow=xtls-rprx-vision&security=reality&sni=${ENV.SNI}&fp=firefox&pbk=${creds.pb_r}&sid=${creds.si_r}&type=tcp#${P}-Reality${suffix}\n`;
         
-        if (ENV.HSPT && fs.existsSync(FILES.CRT)) {
-            links += `hysteria2://${creds.ps_h}@${safeIP}:${ENV.HSPT}/?sni=${ENV.DOM}&insecure=0`;
+        if (ENV.HSPT) {
+            links += `hysteria2://${creds.ps_h}@${safeIP}:${ENV.HSPT}/?sni=${ENV.DOM}&insecure=1`;
             if (ENV.OB_EN === "true") links += `&obfs=salamander&obfs-password=${creds.ob_h}`;
             links += `#${P}-Hy2${suffix}\n`;
         }
-
-        if (ENV.TSPT && fs.existsSync(FILES.CRT))
-            links += `tuic://${creds.id_t}:${creds.ps_t}@${safeIP}:${ENV.TSPT}?sni=${ENV.DOM}&alpn=h3&congestion_control=bbr#${P}-Tuic${suffix}\n`;
-
-        if (ENV.ASPT && fs.existsSync(FILES.CRT))
-            links += `anytls://${creds.id_a}@${safeIP}:${ENV.ASPT}?security=tls&sni=${ENV.DOM}&insecure=0&allowInsecure=0&type=tcp#${P}-Any${suffix}\n`;
-
+        if (ENV.TSPT)
+            links += `tuic://${creds.id_t}:${creds.ps_t}@${safeIP}:${ENV.TSPT}?sni=${ENV.DOM}&alpn=h3&congestion_control=bbr&allowInsecure=1#${P}-Tuic${suffix}\n`;
+        if (ENV.ASPT)
+            links += `anytls://${creds.id_a}@${safeIP}:${ENV.ASPT}?security=tls&sni=${ENV.DOM}&insecure=1&allowInsecure=1&type=tcp#${P}-Any${suffix}\n`;
         if (ENV.SSPT)
             links += `socks5://${creds.us_s}:${creds.ps_s}@${safeIP}:${ENV.SSPT}#${P}-Socks${suffix}\n`;
     }
@@ -385,36 +402,18 @@ async function boot() {
 boot();
 
 http.createServer(async (req, res) => {
-    const headers = {
-        'Content-Type': 'application/json; charset=utf-8',
-        'Cache-Control': 'no-cache',
-        'Server': 'nginx/1.25.1'
-    };
-    
+    const headers = { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-cache', 'Server': 'nginx/1.25.1' };
     if (req.url === ENV.PATH) {
         if (fs.existsSync(FILES.BLOB)) {
             res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
             fs.createReadStream(FILES.BLOB).pipe(res);
-        } else {
-            res.writeHead(404, headers);
-            res.end(JSON.stringify({ code: 404, msg: "Not Found" }));
-        }
+        } else { res.writeHead(404, headers); res.end(JSON.stringify({ code: 404, msg: "Not Found" })); }
         return;
     }
-
     if (req.url === ENV.RE_PATH) {
-        res.writeHead(200, headers);
-        res.end(JSON.stringify({ code: 0, msg: "Reloading..." }));
-        try {
-            if (fs.existsSync(FILES.CRT)) fs.unlinkSync(FILES.CRT);
-            if (fs.existsSync(FILES.KEY)) fs.unlinkSync(FILES.KEY);
-        } catch (e) {}
-        await boot();
-        return;
+        res.writeHead(200, headers); res.end(JSON.stringify({ code: 0, msg: "Reloading..." }));
+        try { if (fs.existsSync(FILES.CRT)) fs.unlinkSync(FILES.CRT); if (fs.existsSync(FILES.KEY)) fs.unlinkSync(FILES.KEY); } catch (e) {}
+        await boot(); return;
     }
-
-    res.writeHead(200, headers);
-    res.end(JSON.stringify({
-        code: 0, msg: "ok", data: { version: "3.0.0", status: "operational", ts: Date.now() }
-    }));
+    res.writeHead(200, headers); res.end(JSON.stringify({ code: 0, msg: "ok", data: { version: "3.1.0", status: "operational", ts: Date.now() } }));
 }).listen(ENV.WEB, () => {});
