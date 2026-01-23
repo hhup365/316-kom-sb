@@ -256,7 +256,7 @@ async function setup(bin, listenAddr) {
         const hy = {
             type: "hysteria2", tag: "in-02", listen, listen_port: +ENV.HSPT,
             users: [{ password: creds.ps_h }], 
-            masquerade: "https://bing.com", 
+            masquerade: "https://www.bing.com", 
             tls: tlsBase, ignore_client_bandwidth: false
         };
         if (ENV.OB_EN === "true") hy.obfs = { type: "salamander", password: creds.ob_h };
