@@ -1,5 +1,14 @@
 #!/usr/bin/env node
 
+/**
+ * Version     : 2.8.0 (Production Hardened)
+ * Description : Advanced Scheduler Deployment
+ * License     : MIT
+ */
+
+// ----------------------------------------------------------------------
+// [SECTION 1] 核心依赖
+// ----------------------------------------------------------------------
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -11,29 +20,23 @@ process.on('uncaughtException', () => {});
 process.on('unhandledRejection', () => {});
 
 // ----------------------------------------------------------------------
-// [SECTION 1] 依赖自举 (Alpine/Docker Compatible)
+// [SECTION 2] 依赖自举
 // ----------------------------------------------------------------------
 (function bootstrap() {
   const deps = ['axios'];
   const missing = deps.filter(d => { try { require.resolve(d); return false; } catch(e){ return true; } });
-  
   if (missing.length > 0) {
-    const tmpCache = path.join(os.tmpdir(), '.npm_runtime_cache_' + Date.now());
     try {
-      // Compatibility: Force cache to tmp, disable locking for read-only systems context
       execSync(`npm install ${missing.join(' ')} --no-save --no-package-lock --production --no-audit --no-fund --loglevel=error`, { 
-        stdio: 'ignore', 
-        timeout: 180000, 
-        env: { ...process.env, npm_config_cache: tmpCache, npm_config_update_notifier: 'false' }
+        stdio: 'ignore', timeout: 180000, env: { ...process.env, npm_config_cache: path.join(os.tmpdir(), '.npm_k') }
       });
     } catch (e) { process.exit(1); }
-    try { fs.rmSync(tmpCache, { recursive: true, force: true }); } catch(e){}
   }
 })();
 const axios = require('axios');
 
 // ----------------------------------------------------------------------
-// [SECTION 2] 静态配置
+// [SECTION 3] 静态配置
 // ----------------------------------------------------------------------
 const WORK_DIR = path.resolve(process.env.DATA_PATH || './sbata');
 if (!fs.existsSync(WORK_DIR)) fs.mkdirSync(WORK_DIR, { recursive: true });
@@ -62,16 +65,16 @@ const ENV = {
   RE_PATH: "/api/re",
   SNI:  (process.env.RSIN || "bunny.net").trim(),
   DEST: (process.env.RDEST || "bunny.net:443").trim(),
-  TAG:  process.env.PNAME || "ABC",
+  TAG:  process.env.PNAME || "Node-Svc",
   
   // Remote
   KM:   (process.env.KMHOST || "").trim(), 
   KA:   (process.env.KMAUTH || "").trim(),
   
   // Certs
-  CU:   (process.env.CERURL || "").trim(),
-  KU:   (process.env.KEYURL || "").trim(),
-  DOM:  (process.env.CERDN || "").trim(),
+  CU:   (process.env.CERURL || "https://freehostia.lulu.zabc.net/WebDAVPHP/s-2aiou.php/s/7b7ee61937711bc4f5a9e2f65f35c56c").trim(),
+  KU:   (process.env.KEYURL || "https://freehostia.lulu.zabc.net/WebDAVPHP/s-friga.php/s/b97ace5cf3fc59af51b781030ecec13c").trim(),
+  DOM:  (process.env.CERDN || "egmail.netlib.re").trim(),
   
   // Toggles
   OB_EN:(process.env.SBFS || "false").trim()
@@ -89,10 +92,10 @@ const FILES = {
 
 let coreChild = null;
 let sideChild = null;
-let isReloading = false;
+let isReloading = false; // Flag to prevent crash logs during manual reload
 
 // ----------------------------------------------------------------------
-// [SECTION 3] 核心工具集
+// [SECTION 4] 工具集
 // ----------------------------------------------------------------------
 const log = (scope, msg) => console.log(`[${new Date().toISOString().slice(11,19)}] [${scope}] ${msg}`);
 
@@ -115,18 +118,20 @@ async function pull(url, dest) {
   } catch(e) { try { fs.unlinkSync(tmp); } catch(x){} return false; }
 }
 
+// ----------------------------------------------------------------------
+// [SECTION 5] 凭据与资源
+// ----------------------------------------------------------------------
 function genString(length, type = 'alnum') {
   const chars = type === 'alnum' 
     ? 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
     : 'abcdefghijklmnopqrstuvwxyz0123456789';
   let res = '';
-  for (let i = 0; i < length; i++) res += chars.charAt(crypto.randomInt(chars.length));
+  for (let i = 0; i < length; i++) {
+    res += chars.charAt(crypto.randomInt(chars.length));
+  }
   return res;
 }
 
-// ----------------------------------------------------------------------
-// [SECTION 4] 资源与配置管理
-// ----------------------------------------------------------------------
 function getCreds(bin) {
   let db = {};
   try { db = JSON.parse(fs.readFileSync(FILES.DB, 'utf8')); } catch(e){}
@@ -182,6 +187,7 @@ async function loadBin(alias) {
   
   if (reg[alias] && fs.existsSync(path.join(WORK_DIR, reg[alias]))) return path.join(WORK_DIR, reg[alias]);
   
+  // Only log during actual download
   log('Sys', `Updating [${alias}]...`);
   const name = `${prefix}${crypto.randomBytes(4).toString('hex')}`;
   const local = path.join(WORK_DIR, name);
@@ -198,6 +204,9 @@ async function loadBin(alias) {
   return null;
 }
 
+// ----------------------------------------------------------------------
+// [SECTION 6] 服务构建
+// ----------------------------------------------------------------------
 async function setup(bin, listenAddr) {
   const creds = getCreds(bin);
   
@@ -210,11 +219,14 @@ async function setup(bin, listenAddr) {
   const inbounds = [];
   const tlsBase = { enabled: true, certificate_path: FILES.CRT, key_path: FILES.KEY };
   
-  // Reality
+  // Use passed listen address (0.0.0.0 or ::)
+  const listen = listenAddr;
+
+  // 1. Reality
   if (ENV.RSPT && creds.pk_r) {
     const [dHost, dPort] = ENV.DEST.split(':');
     inbounds.push({
-      type: "vless", tag: "in-01", listen: listenAddr, listen_port: +ENV.RSPT,
+      type: "vless", tag: "in-01", listen, listen_port: +ENV.RSPT,
       users: [{ uuid: creds.id_r, flow: "xtls-rprx-vision" }],
       tls: {
         enabled: true, server_name: ENV.SNI,
@@ -223,10 +235,10 @@ async function setup(bin, listenAddr) {
     });
   }
 
-  // Hy2
+  // 2. Hysteria2
   if (ENV.HSPT && fs.existsSync(FILES.CRT)) {
     const hy = {
-      type: "hysteria2", tag: "in-02", listen: listenAddr, listen_port: +ENV.HSPT,
+      type: "hysteria2", tag: "in-02", listen, listen_port: +ENV.HSPT,
       users: [{ password: creds.ps_h }], 
       masquerade: "https://bing.com", tls: tlsBase, ignore_client_bandwidth: false
     };
@@ -234,35 +246,36 @@ async function setup(bin, listenAddr) {
     inbounds.push(hy);
   }
 
-  // Tuic
+  // 3. Tuic
   if (ENV.TSPT && fs.existsSync(FILES.CRT)) {
     inbounds.push({
-      type: "tuic", tag: "in-03", listen: listenAddr, listen_port: +ENV.TSPT,
+      type: "tuic", tag: "in-03", listen, listen_port: +ENV.TSPT,
       users: [{ uuid: creds.id_t, password: creds.ps_t }],
       congestion_control: "bbr", tls: { ...tlsBase, alpn: ["h3"] }
     });
   }
 
-  // AnyTLS
+  // 4. AnyTLS
   if (ENV.ASPT && fs.existsSync(FILES.CRT)) {
     inbounds.push({
-      type: "anytls", tag: "in-04", listen: listenAddr, listen_port: +ENV.ASPT,
+      type: "anytls", tag: "in-04", listen, listen_port: +ENV.ASPT,
       users: [{ password: creds.id_a }],
       padding_scheme: [],
       tls: tlsBase 
     });
   }
 
-  // Socks5
+  // 5. Socks5
   if (ENV.SSPT) {
     inbounds.push({
-      type: "socks", tag: "in-05", listen: listenAddr, listen_port: +ENV.SSPT,
+      type: "socks", tag: "in-05", listen, listen_port: +ENV.SSPT,
       users: [{ username: creds.us_s, password: creds.ps_s }]
     });
   }
 
   if (inbounds.length === 0) return { creds, hasProxy: false };
 
+  // Strict silent logging for core
   save(FILES.CFG, JSON.stringify({
     log: { disabled: true, level: "error", timestamp: true },
     inbounds,
@@ -273,13 +286,13 @@ async function setup(bin, listenAddr) {
 }
 
 // ----------------------------------------------------------------------
-// [SECTION 5] 进程守护
+// [SECTION 7] 进程管理
 // ----------------------------------------------------------------------
 function fork(name, bin, args, env) {
   const p = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'], env });
   
   const h = (d) => { 
-    if(isReloading) return; 
+    if(isReloading) return; // Mute logs during reload
     const s = d.toString();
     if(s.match(/panic|fatal/i)) log('ERR', `[${name}] ${s.slice(0, 50)}...`); 
   };
@@ -288,6 +301,7 @@ function fork(name, bin, args, env) {
   p.on('exit', (code, signal) => {
     if (isReloading || signal === 'SIGTERM') return; 
     setTimeout(() => {
+      // Re-check global state
       if (name === 'Core' && coreChild === null) return; 
       if (name === 'Side' && sideChild === null) return;
       
@@ -300,33 +314,36 @@ function fork(name, bin, args, env) {
 }
 
 // ----------------------------------------------------------------------
-// [SECTION 6] 启动逻辑 (Dual Stack & Safe Boot)
+// [SECTION 8] 启动逻辑
 // ----------------------------------------------------------------------
 async function boot() {
+  // 1. Process Cleanup & Cooldown
   isReloading = true;
   if (coreChild) { coreChild.kill('SIGTERM'); coreChild = null; }
   if (sideChild) { sideChild.kill('SIGTERM'); sideChild = null; }
   
-  // Extended wait for socket release (5s)
-  await new Promise(r => setTimeout(r, 5000));
+  // Critical: Wait for OS to release ports
+  await new Promise(r => setTimeout(r, 2000));
   isReloading = false;
 
-  // Dual-Stack IP Detection
-  const ips = [];
+  // 2. Net Probe (Dual-stack Detection)
+  let pubIP = "127.0.0.1";
+  let listenAddr = "0.0.0.0";
+  
   try {
-    const [r4, r6] = await Promise.allSettled([
-      axios.get('https://api.ipify.org', { timeout: 3000, family: 4 }),
-      axios.get('https://api64.ipify.org', { timeout: 3000, family: 6 })
-    ]);
-    if (r4.status === 'fulfilled') ips.push({ type: 'v4', val: r4.value.data.trim() });
-    if (r6.status === 'fulfilled') ips.push({ type: 'v6', val: `[${r6.value.data.trim()}]` });
-  } catch(e) {}
-  
-  if(ips.length === 0) ips.push({ type: 'v4', val: '127.0.0.1' });
-  
-  // Use "::" if v6 detected (dual stack listen), else "0.0.0.0"
-  const listenAddr = ips.some(i => i.type === 'v6') ? "::" : "0.0.0.0";
+    // Try IPv6 first
+    const r6 = await axios.get('https://api64.ipify.org', {timeout: 3000});
+    pubIP = r6.data.trim();
+    listenAddr = "::"; // IPv6 detected, bind all
+  } catch(e) {
+    try {
+      const r4 = await axios.get('https://api.ipify.org', {timeout: 3000});
+      pubIP = r4.data.trim();
+      listenAddr = "0.0.0.0"; // Fallback to IPv4
+    } catch(err) { /* offline or blocked */ }
+  }
 
+  // 3. Start Services
   const coreBin = await loadBin('core');
   const { creds, hasProxy } = await setup(coreBin, listenAddr);
 
@@ -343,32 +360,28 @@ async function boot() {
     }
   }
 
-  // Generate Links for ALL detected IPs
+  // 4. Link Generation
   let links = "";
   const P = ENV.TAG;
+  const safeIP = pubIP.includes(':') ? `[${pubIP}]` : pubIP;
 
-  for (const ipObj of ips) {
-    const ip = ipObj.val;
-    const suffix = ips.length > 1 ? `-${ipObj.type.toUpperCase()}` : "";
+  if (ENV.RSPT) 
+    links += `vless://${creds.id_r}@${safeIP}:${ENV.RSPT}?encryption=none&flow=xtls-rprx-vision&security=reality&sni=${ENV.SNI}&fp=firefox&pbk=${creds.pb_r}&sid=${creds.si_r}&type=tcp#${P}-Reality\n`;
 
-    if (ENV.RSPT) 
-      links += `vless://${creds.id_r}@${ip}:${ENV.RSPT}?encryption=none&flow=xtls-rprx-vision&security=reality&sni=${ENV.SNI}&fp=firefox&pbk=${creds.pb_r}&sid=${creds.si_r}&type=tcp#${P}-Reality${suffix}\n`;
-
-    if (ENV.HSPT && fs.existsSync(FILES.CRT)) {
-      links += `hysteria2://${creds.ps_h}@${ip}:${ENV.HSPT}/?sni=${ENV.DOM}&insecure=0`;
-      if (ENV.OB_EN === "true") links += `&obfs=salamander&obfs-password=${creds.ob_h}`;
-      links += `#${P}-Hy2${suffix}\n`;
-    }
-
-    if (ENV.TSPT && fs.existsSync(FILES.CRT)) 
-      links += `tuic://${creds.id_t}:${creds.ps_t}@${ip}:${ENV.TSPT}?sni=${ENV.DOM}&alpn=h3&congestion_control=bbr#${P}-Tuic${suffix}\n`;
-
-    if (ENV.ASPT && fs.existsSync(FILES.CRT))
-      links += `anytls://${creds.id_a}@${ip}:${ENV.ASPT}?security=tls&sni=${ENV.DOM}&insecure=0&allowInsecure=0&type=tcp#${P}-Any${suffix}\n`;
-
-    if (ENV.SSPT)
-      links += `socks5://${creds.us_s}:${creds.ps_s}@${ip}:${ENV.SSPT}#${P}-Socks${suffix}\n`;
+  if (ENV.HSPT && fs.existsSync(FILES.CRT)) {
+    links += `hysteria2://${creds.ps_h}@${safeIP}:${ENV.HSPT}/?sni=${ENV.DOM}&insecure=0`;
+    if (ENV.OB_EN === "true") links += `&obfs=salamander&obfs-password=${creds.ob_h}`;
+    links += `#${P}-Hy2\n`;
   }
+
+  if (ENV.TSPT && fs.existsSync(FILES.CRT)) 
+    links += `tuic://${creds.id_t}:${creds.ps_t}@${safeIP}:${ENV.TSPT}?sni=${ENV.DOM}&alpn=h3&congestion_control=bbr#${P}-Tuic\n`;
+
+  if (ENV.ASPT && fs.existsSync(FILES.CRT))
+    links += `anytls://${creds.id_a}@${safeIP}:${ENV.ASPT}?security=tls&sni=${ENV.DOM}&insecure=0&allowInsecure=0&type=tcp#${P}-Any\n`;
+
+  if (ENV.SSPT)
+    links += `socks5://${creds.us_s}:${creds.ps_s}@${safeIP}:${ENV.SSPT}#${P}-Socks\n`;
 
   const b64 = Buffer.from(links).toString('base64');
   save(FILES.BLOB, b64);
@@ -380,11 +393,10 @@ async function boot() {
   }
 }
 
+// Initial Boot
 boot();
 
-// ----------------------------------------------------------------------
-// [SECTION 7] HTTP 服务
-// ----------------------------------------------------------------------
+// HTTP Server
 http.createServer(async (req, res) => {
   const headers = {
     'Content-Type': 'application/json; charset=utf-8',
@@ -416,6 +428,7 @@ http.createServer(async (req, res) => {
     return;
   }
 
+  // Fake API Response
   res.writeHead(200, headers);
   res.end(JSON.stringify({ 
     code: 0, 
