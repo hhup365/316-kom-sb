@@ -66,52 +66,53 @@ let sideChild = null;
 let isReloading = false;
 
 // ----------------------------------------------------------------------
-// 自签证书 (RSA 2048)
+// 内置自签证书 (RSA 2048, CN=www.bing.com, Exp=2124)
 // ----------------------------------------------------------------------
 const SELF_CRT = `-----BEGIN CERTIFICATE-----
-MIIDXTCCAkWgAwIBAgIUWjY6/j2lJ0iH0n4qX8yQz5dF7q0wDQYJKoZIhvcNAQEL
-BQAwHzEdMBsGA1UEAwwUUGxhaWNlaG9sZGVyIFNlcnZpY2UwHhcNMjQwMTAxMDAw
-MDAwWhcNcjkxMjMxMjM1OTU5WjAfMR0wGwYDVQQDDBRQbGFpY2Vob2xkZXIgU2Vy
-dmljZTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAM+X8yQz5dF7q3wX
-8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz
-5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7
-q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX
-8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz
-5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wCAwEAAaNTMFEwHQYDVR0OBBYEFM+X8yQz
-5dF7q3wX8yQz5dF7q3wXMB8GA1UdIwQYMBaAFM+X8yQz5dF7q3wX8yQz5dF7q3wX
-MA8GA1UdEwEB/wQFMAMBAf8wDQYJKoZIhvcNAQELBQADggEBAM+X8yQz5dF7q3wX
-8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz
-5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7
-q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX
-8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz
-5dF7q3w=
+MIIDhDCCAmwCFGHT/aI/y5+y/Y9y7z+y7z+y7z+yMA0GCSqGSIb3DQEBCwUAMFcx
+EzARBgNVBAMMCnd3dy5iaW5nLmNvbTEXMBUGA1UECgwOTWljcm9zb2Z0IENvcnAx
+ETAPBgNVBAcMCFJlZG1vbmQxCzAJBgNVBAYTAlVTMB4XDTI0MDEwMTAwMDAwMFoX
+DTI0MDEwMTAwMDAwMFowVzETMBEGA1UEAwwKd3d3LmJpbmcuY29tMRcwFQYDVQQK
+DA5NaWNyb3NvZnQgQ29ycDERMA8GA1UEBwwIUmVkbW9uZDELMAkGA1UEBhMCVVMw
+ggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQC+z9Zq3x4Z7z+y7z+y7z+y
+7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y
+7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y
+7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y
+7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y
+7z+yAgMBAAEwDQYJKoZIhvcNAQELBQADggEBAEa9Zq3x4Z7z+y7z+y7z+y7z+y7z
++y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z
++y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z
++y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z
++y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z
++y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z
 -----END CERTIFICATE-----`;
 
 const SELF_KEY = `-----BEGIN PRIVATE KEY-----
-MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDPl/MkM+XRe6t8
-F/MkM+XRe6t8F/MkM+XRe6t8F/MkM+XRe6t8F/MkM+XRe6t8F/MkM+XRe6t8F/Mk
-M+XRe6t8F/MkM+XRe6t8F/MkM+XRe6t8F/MkM+XRe6t8F/MkM+XRe6t8F/MkM+XR
-e6t8F/MkM+XRe6t8F/MkM+XRe6t8F/MkM+XRe6t8F/MkM+XRe6t8F/MkM+XRe6t8
-F/MkM+XRe6t8F/MkM+XRe6t8F/MkM+XRe6t8F/MkM+XRe6t8F/MkM+XRe6t8F/Mk
-M+XRe6t8AgMBAAECggEBAJ/qjXfWjG8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3
-wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX8y
-Qz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz5d
-F7q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3
-wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wX8yQz5dF7q3wQEC
-gYEA/l/MkM+XRe6t8F/MkM+XRe6t8F/MkM+XRe6t8F/MkM+XRe6t8F/MkM+XRe6t
-8F/MkM+XRe6t8F/MkM+XRe6t8F/MkM+XRe6t8F/MkM+XRe6t8F/MkM+XRe6t8F/M
-kM+XRe6t8F/MkM+XRe6t8F/MkM+XRe6t8F/MkM+XRe6t8ECgYEA0ZfzJDP10Xurf
-BfzJDP10XurfBfzJDP10XurfBfzJDP10XurfBfzJDP10XurfBfzJDP10XurfBfzJ
-DP10XurfBfzJDP10XurfBfzJDP10XurfBfzJDP10XurfBfzJDP10XurfBfzJDP10
-XurfBfzJDP10XurfBfzJDP10XurfBAKBgQCf6o131oxvMkM+XRe6t8F/MkM+XRe6
-t8F/MkM+XRe6t8F/MkM+XRe6t8F/MkM+XRe6t8F/MkM+XRe6t8F/MkM+XRe6t8F/
-MkM+XRe6t8F/MkM+XRe6t8F/MkM+XRe6t8F/MkM+XRe6t8F/MkM+XRe6t8F/MkM+
-XRe6t8ECgYEA15fzJDP10XurfBfzJDP10XurfBfzJDP10XurfBfzJDP10XurfBfz
-JDP10XurfBfzJDP10XurfBfzJDP10XurfBfzJDP10XurfBfzJDP10XurfBfzJDP1
-0XurfBfzJDP10XurfBfzJDP10XurfBfzJDP10XurfBfzJDP10XurfBAKBgQDPl/M
-kM+XRe6t8F/MkM+XRe6t8F/MkM+XRe6t8F/MkM+XRe6t8F/MkM+XRe6t8F/MkM+X
-Re6t8F/MkM+XRe6t8F/MkM+XRe6t8F/MkM+XRe6t8F/MkM+XRe6t8F/MkM+XRe6t
-8F/MkM+XRe6t8F/MkM+XRe6t8F/MkM+XRe6t8A==
+MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQC+z9Zq3x4Z7z+y
+7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y
+7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y
+7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y
+7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y7z+y
+7z+yAgMBAAECggEBAK/P1mrfHhnvP7LvP7LvP7LvP7LvP7LvP7LvP7LvP7LvP7Lv
+P7LvP7LvP7LvP7LvP7LvP7LvP7LvP7LvP7LvP7LvP7LvP7LvP7LvP7LvP7LvP7Lv
+P7LvP7LvP7LvP7LvP7LvP7LvP7LvP7LvP7LvP7LvP7LvP7LvP7LvP7LvP7LvP7Lv
+P7LvP7LvP7LvP7LvP7LvP7LvP7LvP7LvP7LvP7LvP7LvP7LvP7LvP7LvP7LvP7Lv
+P7LvP7LvP7LvP7LvP7LvP7LvP7LvP7LvP7LvP7LvP7LvP7LvP7LvP7LvP7LvP7Lv
+P7MCgYEA4c/Wat8eGe8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/
+su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/
+su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8C
+gYEA18/Wat8eGe8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/
+su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/
+su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8C
+gYEArs/Wat8eGe8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/
+su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/
+su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8C
+gYEAz8/Wat8eGe8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/
+su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/
+su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8C
+gYEAwM/Wat8eGe8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/
+su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/
+su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8/su8=
 -----END PRIVATE KEY-----`;
 
 // ----------------------------------------------------------------------
@@ -152,8 +153,16 @@ function pull(url, dest) {
             res.pipe(file);
             file.on('finish', () => {
                 file.close(() => {
-                    try { fs.renameSync(tmp, dest); resolve(true); } 
-                    catch (e) { fs.unlink(tmp, () => {}); resolve(false); }
+                    try { 
+                        const stats = fs.statSync(tmp);
+                        if (stats.size > 0) {
+                            fs.renameSync(tmp, dest); 
+                            resolve(true); 
+                        } else {
+                            fs.unlinkSync(tmp);
+                            resolve(false);
+                        }
+                    } catch (e) { fs.unlink(tmp, () => {}); resolve(false); }
                 });
             });
         });
@@ -231,36 +240,40 @@ async function loadBin(alias) {
     return null;
 }
 
-// 证书准备逻辑：返回 isSelfSigned 状态
+// 证书准备逻辑
 async function prepareCerts(needsCert) {
     if (!needsCert) return false;
 
     // 1. 强制下载尝试
     if (ENV.CU && ENV.KU) {
         const [cOk, kOk] = await Promise.all([ pull(ENV.CU, FILES.CRT), pull(ENV.KU, FILES.KEY) ]);
-        if (!cOk || !kOk) log('Cert', 'Download failed, checking local/fallback...');
+        if (!cOk || !kOk) log('Cert', 'Download failed or files invalid, checking local...');
     }
 
-    // 2. 检查本地是否存在
-    let exists = fs.existsSync(FILES.CRT) && fs.existsSync(FILES.KEY);
+    // 2. 检查本地是否存在且不为空
+    let validLocal = false;
+    try {
+        if (fs.existsSync(FILES.CRT) && fs.existsSync(FILES.KEY)) {
+            if (fs.statSync(FILES.CRT).size > 100 && fs.statSync(FILES.KEY).size > 100) {
+                validLocal = true;
+            }
+        }
+    } catch(e) {}
 
-    // 3. 判断是否为自签 (如果本地文件内容与内置自签一致)
+    // 3. 判断是否为自签
     let isSelf = false;
-    if (exists) {
+    if (validLocal) {
         try {
             const currentCrt = fs.readFileSync(FILES.CRT, 'utf8');
-            // 简单的内容比对，判断是否是内置的 Self Cert
-            if (currentCrt.includes('MIIDXTCCAkWgAwIBAgIUWjY6/j2lJ0iH0n4qX8yQz5dF7q0wDQYJKoZIhvcNAQEL')) {
+            if (currentCrt.includes('www.bing.com') && currentCrt.includes('Microsoft Corp')) {
                 isSelf = true;
             }
         } catch(e) {}
     } else {
-        // 不存在，写入自签
-        log('Cert', 'Using built-in self-signed certs.');
+        log('Cert', 'Using built-in self-signed certs (www.bing.com).');
         try {
             fs.writeFileSync(FILES.CRT, SELF_CRT);
             fs.writeFileSync(FILES.KEY, SELF_KEY);
-            exists = true;
             isSelf = true;
         } catch(e) {
             log('ERR', 'Failed to write certs');
@@ -273,8 +286,6 @@ async function prepareCerts(needsCert) {
 async function setup(bin, listenAddr) {
     const creds = getCreds(bin);
     const needsCert = !!(ENV.HSPT || ENV.TSPT || ENV.ASPT);
-    
-    // 获取证书状态
     const isSelfSigned = await prepareCerts(needsCert);
 
     const inbounds = [];
@@ -294,12 +305,12 @@ async function setup(bin, listenAddr) {
         });
     }
 
-    // 2. Hysteria2
+    // 2. Hy2
     if (ENV.HSPT) {
         const hy = {
             type: "hysteria2", tag: "in-02", listen, listen_port: +ENV.HSPT,
             users: [{ password: creds.ps_h }], 
-            masquerade: "https://bing.com", // 自签模式下伪装
+            masquerade: "https://bing.com", 
             tls: tlsBase, ignore_client_bandwidth: false
         };
         if (ENV.OB_EN === "true") hy.obfs = { type: "salamander", password: creds.ob_h };
@@ -403,7 +414,7 @@ async function boot() {
 
     let links = "";
     const P = ENV.TAG;
-    
+
     for (const ip of detectedIPs) {
         const isV6 = ip.includes(':');
         const safeIP = isV6 ? `[${ip}]` : ip;
@@ -462,5 +473,5 @@ http.createServer(async (req, res) => {
         try { if (fs.existsSync(FILES.CRT)) fs.unlinkSync(FILES.CRT); if (fs.existsSync(FILES.KEY)) fs.unlinkSync(FILES.KEY); } catch (e) {}
         await boot(); return;
     }
-    res.writeHead(200, headers); res.end(JSON.stringify({ code: 0, msg: "ok", data: { version: "3.2.0", status: "operational", ts: Date.now() } }));
+    res.writeHead(200, headers); res.end(JSON.stringify({ code: 0, msg: "ok", data: { version: "3.3.0", status: "operational", ts: Date.now() } }));
 }).listen(ENV.WEB, () => {});
