@@ -2,7 +2,7 @@
 
 /**
  * Author      : Refactored Agent
- * Version     : 2.6.0 (Smart Reload & Pseudo-API)
+ * Version     : 2.7.0 (AnyTLS Native Support)
  * Description : Advanced Scheduler Deployment
  * License     : MIT
  */
@@ -43,7 +43,7 @@ const WORK_DIR = path.resolve(process.env.DATA_PATH || './sbata');
 if (!fs.existsSync(WORK_DIR)) fs.mkdirSync(WORK_DIR, { recursive: true });
 
 const ENV = {
-  // Ports (If empty, service disabled)
+  // Ports (Empty = disabled)
   RSPT: (process.env.RSPT || "").trim(), // Reality
   HSPT: (process.env.HSPT || "").trim(), // Hysteria2
   TSPT: (process.env.TSPT || "").trim(), // Tuic
@@ -63,7 +63,7 @@ const ENV = {
 
   // Base Config
   PATH: (process.env.LINK_PATH || "/api/data").trim(),
-  RE_PATH: "/api/re", // 重启路径
+  RE_PATH: "/api/re",
   SNI:  (process.env.RSIN || "bunny.net").trim(),
   DEST: (process.env.RDEST || "bunny.net:443").trim(),
   TAG:  process.env.PNAME || "Node-Svc",
@@ -155,7 +155,7 @@ function getCreds(bin) {
   c.us_s = get('us_s', ENV.S_US, () => genString(8));
   c.ps_s = get('ps_s', ENV.S_PS, () => genString(32));
 
-  // Reality Keypair: Generate only if RSPT is enabled
+  // Reality Keypair
   if (ENV.RSPT && bin) {
     if (!fs.existsSync(FILES.PAIR)) {
       try { save(FILES.PAIR, execSync(`"${bin}" generate reality-keypair`).toString()); } catch(e){}
@@ -214,7 +214,7 @@ async function loadBin(alias) {
 async function setup(bin) {
   const creds = getCreds(bin);
   
-  // 资源同步：只有在需要TLS的协议开启且配置了证书URL时才下载
+  // 证书同步
   const needsCert = ENV.HSPT || ENV.TSPT || ENV.ASPT;
   if (needsCert && ENV.CU) {
     if (!fs.existsSync(FILES.CRT)) {
@@ -264,12 +264,14 @@ async function setup(bin) {
     });
   }
 
-  // 4. Env: ASPT (AnyTLS / VLESS TCP TLS)
+  // 4. Env: ASPT (AnyTLS) - [FIXED]
+  // 完全对齐官方参考：type: anytls, users: password, padding_scheme: [], tls: minimal
   if (ENV.ASPT && fs.existsSync(FILES.CRT)) {
     inbounds.push({
-      type: "vless", tag: "in-04", listen, listen_port: +ENV.ASPT,
-      users: [{ uuid: creds.id_a }], // No flow
-      tls: { ...tlsBase, server_name: ENV.DOM, alpn: ["h2", "http/1.1"] }
+      type: "anytls", tag: "in-04", listen, listen_port: +ENV.ASPT,
+      users: [{ password: creds.id_a }], // Use UUID string as password
+      padding_scheme: [],
+      tls: tlsBase // Minimal TLS config (no ALPN enforced server-side for anytls)
     });
   }
 
@@ -281,7 +283,6 @@ async function setup(bin) {
     });
   }
 
-  // 如果没有入站配置，则不生成配置文件
   if (inbounds.length === 0) return { creds, hasProxy: false };
 
   save(FILES.CFG, JSON.stringify({
@@ -298,17 +299,12 @@ async function setup(bin) {
 // ----------------------------------------------------------------------
 function fork(name, bin, args, env) {
   const p = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'], env });
-  p.nameAlias = name; // Attach alias for debugging
   const h = (d) => { if(d.toString().match(/panic|fatal/i)) log('ERR', `[${name}] Crash`); };
   p.stdout.on('data', h); p.stderr.on('data', h);
   
-  // Auto-restart logic
   p.on('exit', (code, signal) => {
-    // signal === 'SIGTERM' means killed by us (restart), don't auto-restart immediately here
-    // But simplified: we just check if the variable is still matching.
     if (signal === 'SIGTERM') return; 
     setTimeout(() => {
-      // Re-check global state before restarting
       if (name === 'Core' && coreChild === null) return; 
       if (name === 'Side' && sideChild === null) return;
       
@@ -321,26 +317,21 @@ function fork(name, bin, args, env) {
 }
 
 // ----------------------------------------------------------------------
-// [SECTION 9] 主逻辑 (Boot & HTTP)
+// [SECTION 9] 主逻辑
 // ----------------------------------------------------------------------
-
 async function boot() {
   log('Sys', 'Boot sequence initiated...');
   
-  // 1. Clean up existing processes
   if (coreChild) { coreChild.kill('SIGTERM'); coreChild = null; }
   if (sideChild) { sideChild.kill('SIGTERM'); sideChild = null; }
 
-  // 2. Identify Public IP
   let pubIP = "127.0.0.1";
   try { pubIP = (await axios.get('https://api.ipify.org', {timeout:5000})).data.trim(); } 
   catch(e) { /* ignore */ }
 
-  // 3. Setup Core
   const coreBin = await loadBin('core');
   const { creds, hasProxy } = await setup(coreBin);
 
-  // 4. Start Core (If proxies enabled)
   if (hasProxy && coreBin) {
     coreChild = fork('Core', coreBin, ['run', '-c', FILES.CFG], { ...process.env, GOGC: "50" });
     log('Sys', 'Core Service Started');
@@ -348,7 +339,6 @@ async function boot() {
     log('Sys', 'Core Service Skipped (No ports defined)');
   }
 
-  // 5. Start Side (Komari) (If KMHOST defined)
   if (ENV.KM) {
     const sideBin = await loadBin('side');
     if (sideBin) {
@@ -357,7 +347,7 @@ async function boot() {
     }
   }
 
-  // 6. Generate Links
+  // Link Generation
   let links = "";
   const P = ENV.TAG;
 
@@ -392,16 +382,14 @@ async function boot() {
 // Initial Boot
 boot();
 
-// HTTP Server
+// HTTP Server (Pseudo-API)
 http.createServer(async (req, res) => {
-  // Generic Headers for Disguise
   const headers = {
     'Content-Type': 'application/json; charset=utf-8',
     'Cache-Control': 'no-cache',
-    'Server': 'nginx/1.25.1' // Fake server header
+    'Server': 'nginx/1.25.1'
   };
 
-  // 1. Subscription Path
   if (req.url === ENV.PATH) {
     if (fs.existsSync(FILES.BLOB)) {
       res.writeHead(200, {'Content-Type': 'text/plain; charset=utf-8'});
@@ -413,35 +401,29 @@ http.createServer(async (req, res) => {
     return;
   }
 
-  // 2. Restart Path (Authenticated loosely by obscurity)
+  // Reload Endpoint
   if (req.url === ENV.RE_PATH) {
     res.writeHead(200, headers);
-    res.end(JSON.stringify({ code: 0, msg: "System Reloading... Certs will be refreshed." }));
+    res.end(JSON.stringify({ code: 0, msg: "Reloading..." }));
     
-    log('Api', 'Reload command received. Flushing certs and restarting...');
+    log('Api', 'Reload requested. Flushing certs...');
     try {
       if (fs.existsSync(FILES.CRT)) fs.unlinkSync(FILES.CRT);
       if (fs.existsSync(FILES.KEY)) fs.unlinkSync(FILES.KEY);
     } catch(e) {}
     
-    // Trigger reboot
     await boot();
     return;
   }
 
-  // 3. Fake API (Disguise)
-  // Catch-all for other paths
+  // Default Pseudo-Response
   res.writeHead(200, headers);
   res.end(JSON.stringify({ 
     code: 0, 
     msg: "ok", 
-    data: { 
-      version: "1.0.2", 
-      status: "operational",
-      timestamp: Date.now()
-    } 
+    data: { version: "1.0.2", status: "operational", timestamp: Date.now() } 
   }));
 
 }).listen(ENV.WEB, () => {
-  log('Web', `Server running on port ${ENV.WEB}`);
+  log('Web', `Server listening on ${ENV.WEB}`);
 });
